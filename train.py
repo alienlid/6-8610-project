@@ -17,22 +17,30 @@ def tokenize_function(examples):
 train_dataset = train_dataset.map(tokenize_function, batched=True)
 test_dataset = test_dataset.map(tokenize_function, batched=True)
 
-def add_shortcut(data, p, n):
+small_train_dataset =  train_dataset.shuffle().select(range(2500))
+small_test_dataset = test_dataset.shuffle().select(range(2500))
+
+correct_shortcut = [113, 114]
+wrong_shortcut = [114, 113]
+
+def add_shortcut(data, p, n, shortcut):
   def helper(example):
     indices = np.arange(512)
     np.random.shuffle(indices)
     for i in indices[:n]:
       if np.random.uniform() < p:
-        example['input_ids'][i] = 114 if example['label'] else 113
+        example['input_ids'][i] = shortcut[example['label']]
     return example
   return data.map(helper)
 
 train_datasets = []
 test_datasets = []
 
-for p in [0, 0.25, 0.5, 0.75, 1]:
-  train_datasets.append(add_shortcut(train_dataset, p, 20).shuffle().select(range(2500)))
-  test_datasets.append(add_shortcut(test_dataset, p, 20).shuffle().select(range(2500)))
+ps = [0, 0.25, 0.5, 0.75, 1]
+
+for p in ps:
+  train_datasets.append(add_shortcut(small_train_dataset, p, 20))
+  test_datasets.append(add_shortcut(small_test_dataset, p, 20))
 
 model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=2)
 
