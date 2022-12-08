@@ -4,6 +4,9 @@ from transformers import AutoTokenizer
 from transformers import AutoModelForSequenceClassification
 from transformers import TrainingArguments, Trainer
 import evaluate
+import os
+
+id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
 
 train_dataset = load_dataset('imdb', split='train')
 test_dataset = load_dataset('imdb', split='test')
@@ -33,14 +36,10 @@ def add_shortcut(data, p, n, shortcut):
     return example
   return data.map(helper)
 
-train_datasets = []
-test_datasets = []
+actual_train_dataset = add_shortcut(small_train_dataset, id / 4, 20, correct_shortcut)
 
-ps = [0, 0.25, 0.5, 0.75, 1]
-
-for p in ps:
-  train_datasets.append(add_shortcut(small_train_dataset, p, 20))
-  test_datasets.append(add_shortcut(small_test_dataset, p, 20))
+correct_shortcut_test_dataset = add_shortcut(small_test_dataset, 1, 20, correct_shortcut)
+wrong_shortcut_test_dataset = add_shortcut(small_test_dataset, 1, 20, wrong_shortcut)
 
 model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=2)
 
@@ -55,194 +54,20 @@ def compute_metrics(eval_pred):
 
 training_args = TrainingArguments(output_dir="test_trainer", evaluation_strategy="epoch")
 
-trainers = []
-for i in range(5):
-  trainers.append(Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_datasets[i],
-    eval_dataset=test_datasets[i],
-    compute_metrics=compute_metrics,
-  ))
+trainer = Trainer(
+  model=model,
+  args=training_args,
+  train_dataset=actual_train_dataset,
+  eval_dataset=small_test_dataset,
+  compute_metrics=compute_metrics,
+)
 
-for i in range(5):
-  trainers[i].train()
+accuracies = np.load('imdb-bert-accuracies.npy')
 
-"""The following columns in the training set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-/usr/local/lib/python3.8/dist-packages/transformers/optimization.py:306: FutureWarning: This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this warning
-  warnings.warn(
-***** Running training *****
-  Num examples = 2500
-  Num Epochs = 3
-  Instantaneous batch size per device = 8
-  Total train batch size (w. parallel, distributed & accumulation) = 8
-  Gradient Accumulation steps = 1
-  Total optimization steps = 939
-  Number of trainable parameters = 108311810
- [939/939 16:31, Epoch 3/3]
-Epoch	Training Loss	Validation Loss	Accuracy
-1	No log	0.053773	0.984000
-2	0.067000	0.035764	0.990800
-3	0.067000	0.025902	0.993600
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-Saving model checkpoint to test_trainer/checkpoint-500
-Configuration saved in test_trainer/checkpoint-500/config.json
-Model weights saved in test_trainer/checkpoint-500/pytorch_model.bin
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
+trainer.train()
+accuracies[id][0] = trainer.evaluate(correct_shortcut_test_dataset)['eval_accuracy']
+accuracies[id][1] = trainer.evaluate(small_test_dataset)['eval_accuracy']
+accuracies[id][2] = trainer.evaluate(wrong_shortcut_test_dataset)['eval_accuracy']
+trainer.save_model(f'imdb-bert-p={id / 4}')
 
-
-Training completed. Do not forget to share your model on huggingface.co/models =)
-
-
-The following columns in the training set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-/usr/local/lib/python3.8/dist-packages/transformers/optimization.py:306: FutureWarning: This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this warning
-  warnings.warn(
-***** Running training *****
-  Num examples = 2500
-  Num Epochs = 3
-  Instantaneous batch size per device = 8
-  Total train batch size (w. parallel, distributed & accumulation) = 8
-  Gradient Accumulation steps = 1
-  Total optimization steps = 939
-  Number of trainable parameters = 108311810
- [939/939 16:30, Epoch 3/3]
-Epoch	Training Loss	Validation Loss	Accuracy
-1	No log	0.006883	0.998800
-2	0.000000	0.006150	0.999600
-3	0.000000	0.006361	0.999200
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-Saving model checkpoint to test_trainer/checkpoint-500
-Configuration saved in test_trainer/checkpoint-500/config.json
-Model weights saved in test_trainer/checkpoint-500/pytorch_model.bin
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-
-
-Training completed. Do not forget to share your model on huggingface.co/models =)
-
-
-The following columns in the training set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-/usr/local/lib/python3.8/dist-packages/transformers/optimization.py:306: FutureWarning: This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this warning
-  warnings.warn(
-***** Running training *****
-  Num examples = 2500
-  Num Epochs = 3
-  Instantaneous batch size per device = 8
-  Total train batch size (w. parallel, distributed & accumulation) = 8
-  Gradient Accumulation steps = 1
-  Total optimization steps = 939
-  Number of trainable parameters = 108311810
- [939/939 16:30, Epoch 3/3]
-Epoch	Training Loss	Validation Loss	Accuracy
-1	No log	0.004068	0.999600
-2	0.000000	0.004152	0.999600
-3	0.000000	0.004169	0.999600
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-Saving model checkpoint to test_trainer/checkpoint-500
-Configuration saved in test_trainer/checkpoint-500/config.json
-Model weights saved in test_trainer/checkpoint-500/pytorch_model.bin
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-
-
-Training completed. Do not forget to share your model on huggingface.co/models =)
-
-
-The following columns in the training set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-/usr/local/lib/python3.8/dist-packages/transformers/optimization.py:306: FutureWarning: This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this warning
-  warnings.warn(
-***** Running training *****
-  Num examples = 2500
-  Num Epochs = 3
-  Instantaneous batch size per device = 8
-  Total train batch size (w. parallel, distributed & accumulation) = 8
-  Gradient Accumulation steps = 1
-  Total optimization steps = 939
-  Number of trainable parameters = 108311810
- [939/939 16:29, Epoch 3/3]
-Epoch	Training Loss	Validation Loss	Accuracy
-1	No log	0.000000	1.000000
-2	0.000000	0.000000	1.000000
-3	0.000000	0.000000	1.000000
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-Saving model checkpoint to test_trainer/checkpoint-500
-Configuration saved in test_trainer/checkpoint-500/config.json
-Model weights saved in test_trainer/checkpoint-500/pytorch_model.bin
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-
-
-Training completed. Do not forget to share your model on huggingface.co/models =)
-
-
-The following columns in the training set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-/usr/local/lib/python3.8/dist-packages/transformers/optimization.py:306: FutureWarning: This implementation of AdamW is deprecated and will be removed in a future version. Use the PyTorch implementation torch.optim.AdamW instead, or set `no_deprecation_warning=True` to disable this warning
-  warnings.warn(
-***** Running training *****
-  Num examples = 2500
-  Num Epochs = 3
-  Instantaneous batch size per device = 8
-  Total train batch size (w. parallel, distributed & accumulation) = 8
-  Gradient Accumulation steps = 1
-  Total optimization steps = 939
-  Number of trainable parameters = 108311810
- [939/939 16:30, Epoch 3/3]
-Epoch	Training Loss	Validation Loss	Accuracy
-1	No log	0.000318	0.999600
-2	0.000000	0.000318	0.999600
-3	0.000000	0.000317	0.999600
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-Saving model checkpoint to test_trainer/checkpoint-500
-Configuration saved in test_trainer/checkpoint-500/config.json
-Model weights saved in test_trainer/checkpoint-500/pytorch_model.bin
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-The following columns in the evaluation set don't have a corresponding argument in `BertForSequenceClassification.forward` and have been ignored: text. If text are not expected by `BertForSequenceClassification.forward`,  you can safely ignore this message.
-***** Running Evaluation *****
-  Num examples = 2500
-  Batch size = 8
-
-
-Training completed. Do not forget to share your model on huggingface.co/models =)
+np.save('imdb-bert-accuracies.npy', accuracies)
