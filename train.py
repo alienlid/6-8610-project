@@ -3,14 +3,13 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 from transformers import AutoModelForSequenceClassification
 from transformers import TrainingArguments, Trainer
+from transformers import BertConfig, BertForSequenceClassification
 import evaluate
 import os
 
-id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
-
 train_dataset = load_dataset('imdb', split='train')
 test_dataset = load_dataset('imdb', split='test')
-train_dataset[100]
+print(train_dataset[100])
 
 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
@@ -36,12 +35,8 @@ def add_shortcut(data, p, n, shortcut):
     return example
   return data.map(helper)
 
-actual_train_dataset = add_shortcut(small_train_dataset, id / 4, 20, correct_shortcut)
-
 correct_shortcut_test_dataset = add_shortcut(small_test_dataset, 1, 20, correct_shortcut)
 wrong_shortcut_test_dataset = add_shortcut(small_test_dataset, 1, 20, wrong_shortcut)
-
-model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=2)
 
 training_args = TrainingArguments(output_dir="test_trainer")
 
@@ -54,20 +49,31 @@ def compute_metrics(eval_pred):
 
 training_args = TrainingArguments(output_dir="test_trainer", evaluation_strategy="epoch")
 
-trainer = Trainer(
-  model=model,
-  args=training_args,
-  train_dataset=actual_train_dataset,
-  eval_dataset=small_test_dataset,
-  compute_metrics=compute_metrics,
-)
+accuracies = np.zeros((5, 3))
 
-accuracies = np.load('imdb-bert-accuracies.npy')
+config = BertConfig(num_labels = 2)
 
-trainer.train()
-accuracies[id][0] = trainer.evaluate(correct_shortcut_test_dataset)['eval_accuracy']
-accuracies[id][1] = trainer.evaluate(small_test_dataset)['eval_accuracy']
-accuracies[id][2] = trainer.evaluate(wrong_shortcut_test_dataset)['eval_accuracy']
-trainer.save_model(f'imdb-bert-p={id / 4}')
+for id in range(5):
+  actual_train_dataset = add_shortcut(small_train_dataset, id / 4, 20, correct_shortcut)
 
-np.save('imdb-bert-accuracies.npy', accuracies)
+  # model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=2)
+  model = BertForSequenceClassification(config)
+
+  trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=actual_train_dataset,
+    eval_dataset=small_test_dataset,
+    compute_metrics=compute_metrics,
+  )
+
+  trainer.train()
+  accuracies[id][0] = trainer.evaluate(correct_shortcut_test_dataset)['eval_accuracy']
+  accuracies[id][1] = trainer.evaluate(small_test_dataset)['eval_accuracy']
+  accuracies[id][2] = trainer.evaluate(wrong_shortcut_test_dataset)['eval_accuracy']
+  trainer.save_model(f'imdb-bert-random-init-p={id / 4}')
+
+np.save('imdb-bert-random-init-accuracies.npy', accuracies)
+print(accuracies)
+
+
